@@ -131,14 +131,14 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	Vector3 rotate{ 0.0f,0.0f,0.0f };
 	Vector3 translate{ 0.0f,0.0f,0.0f };
 
-	Matrix4x4 cameraMatrix = MakeAffineMatrix({ 1.0f, 1.0f, 1.0f }, { 0.26f, 0.0f, 0.0f }, { 0, 1.9f, -6.49f });
-	Matrix4x4 viewMatrix = Inverse(cameraMatrix);
-	Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(0.45f, 1280.0f / 720.0f, 0.1f, 100.0f);
-	Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
-	Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, 1280, 720, 0.0f, 1.0f);
+	Vector3 cameraRotate = { 0.26f, 0.0f, 0.0f };
+	Vector3 cameraTranslate = { 0.0f, 1.9f, -6.49f };
 
 	Segment segment = { {0.0f,1.0f,0.0f},{0.0f,0.0f,0.0f} };
 	Plane plane = { {0.0f,1.0f,0.0f}, 1.0f };
+
+	// 固定したい線分の長さ
+	const float segmentLength = 1.0f;
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -153,7 +153,24 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		/// ↓更新処理ここから
 		///
 
-		segment.diff = { segment.origin.x, segment.origin.y-1.0f, segment.origin.z };
+		Matrix4x4 cameraMatrix = MakeAffineMatrix({ 1.0f, 1.0f, 1.0f }, cameraRotate, cameraTranslate);
+		Matrix4x4 viewMatrix = Inverse(cameraMatrix);
+		Matrix4x4 projectionMatrix = MakePerspectiveFovMatrix(0.45f, 1280.0f / 720.0f, 0.1f, 100.0f);
+		Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
+		Matrix4x4 viewportMatrix = MakeViewportMatrix(0, 0, 1280, 720, 0.0f, 1.0f);
+
+		// direction（方向ベクトル）をImGuiで調整可能にする
+		static Vector3 direction = { 0.0f, -1.0f, 0.0f }; // 初期は下向き
+		ImGui::SliderFloat3("Direction", &direction.x, -1.0f, 1.0f);
+
+		// 単位ベクトルにしてからスケーリング
+		Vector3 normalizedDir = Normalize(direction);
+		segment.diff = Add(segment.origin, {
+			normalizedDir.x * segmentLength,
+			normalizedDir.y * segmentLength,
+			normalizedDir.z * segmentLength
+			});
+
 
 		Segment transformSegment = {
 			Transform(Transform(segment.origin,viewProjectionMatrix),viewportMatrix),
@@ -195,7 +212,10 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 		ImGui::Begin("Segment Controller");
 		ImGui::SetWindowSize(ImVec2(400, 300)); // 幅400, 高さ300
 		ImGui::SliderFloat3("segment.origine", &segment.origin.x, -5.0f, 5.0f);
+		ImGui::DragFloat3("Rotate", &cameraRotate.x, 0.01f);
+		ImGui::SliderFloat3("Translate", &cameraTranslate.x, -10.0f, 10.0f);
 		ImGui::End();
+
 
 		///
 		/// ↑描画処理ここまで
@@ -330,21 +350,39 @@ float Dot(const Vector3& v1, const Vector3& v2)
 
 bool IsCollision(const Segment& segment, const Plane& plane)
 {
-	float dot = Dot(plane.normal,segment.diff);
+	// 線分の方向ベクトルを求める
+	Vector3 direction = Subtract(segment.diff, segment.origin);
 
-	if (dot == 0.0f) {
-		return false;
-	}
+	// 始点から平面への距離
+	float dotA = Dot(plane.normal, segment.origin) - plane.distance;
+	float dotB = Dot(plane.normal, segment.diff) - plane.distance;
 
-	float t = (plane.distance - Dot(segment.origin, segment.diff)) / dot;
-
-	if (t > 0.0f && t < 1.0f) {
+	// 端点が平面の反対側にある → 符号が異なる（または片方が0）
+	if (dotA * dotB <= 0.0f) {
 		return true;
-	} else {
-		return false;
 	}
 
+	return false;
 }
+
+
+//bool IsCollision(const Segment& segment, const Plane& plane)
+//{
+//	float dot = Dot(plane.normal,segment.diff);
+//
+//	if (dot == 0.0f) {
+//		return false;
+//	}
+//
+//	float t = (plane.distance - Dot(segment.origin, segment.diff)) / dot;
+//
+//	if (t > 0.0f && t < 1.0f) {
+//		return true;
+//	} else {
+//		return false;
+//	}
+//
+//}
 
 float GetLength(const Vector3& v1)
 {
